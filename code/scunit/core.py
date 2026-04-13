@@ -21,11 +21,26 @@ class ScUnit(PlottingMixin):
         'substitutions': 'df_substitutions',
     }
 
-    def __init__(self, id, filepath=None):
+    def __init__(self, id, filepath=None, min_mutations=0):
+        """
+        Parameters
+        ----------
+        id : str
+            Dataset identifier, used to construct the default filepath.
+        filepath : str, optional
+            Path to the CSV file. If None, defaults to '../data/SBS-count-by-cell/{id}.csv'.
+        min_mutations : int, optional
+            Minimum number of mutations per cell (row sum). Cells below this threshold are excluded. Default is 0 (no filtering).
+        """
         if filepath is None:
-            filepath = f'../data/funnell_tables/{id}_sbs_counts.csv'    # Default filepath based on ID
+            filepath = f'../data/SBS-count-by-cell/{id}.csv'    # Default filepath based on ID
         self.id = id
-        self.df_mutations = pd.read_csv(filepath).set_index('cell_id')   # Load data into a DataFrame
+
+        df = pd.read_csv(filepath).set_index('cell_id')
+        if min_mutations > 0:
+            df = df[df.sum(axis=1) >= min_mutations]
+        self.df_mutations = df
+        
         self.df_contexts = self._aggregate_mutations()
         self.df_substitutions = self._aggregate_mutations(kind='substitution')
         self.nrows = self.df_mutations.shape[0]     # Store number of rows
@@ -33,6 +48,15 @@ class ScUnit(PlottingMixin):
         self.cluster_labels = {}    # Cache HDBSCAN labels by parameters
         self.current_umap_params = None     # Track the current UMAP parameters
         self.current_hdbscan_params = None  # Track the current HDBSCAN parameters
+
+        mutation_counts = self.df_mutations.sum(axis=1)
+        print(f"Loaded {self.nrows} cells.")
+        print(
+            f"Mutations per cell:\n"
+            f"\tmin:  {mutation_counts.min():.0f}\n"
+            f"\tmean: {mutation_counts.mean():.0f}\n"
+            f"\tmax:  {mutation_counts.max():.0f}"
+        )
 
     def _aggregate_mutations(self, kind='context'):
         """
