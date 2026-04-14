@@ -5,21 +5,15 @@ import seaborn as sns
 
 class PlottingMixin:
     def plot_embedding(self, show_noise=True, s=15, alpha=0.7, cmap='Dark2', figsize=(6, 4), title=None):
-        """
-        Scatter plot of the current UMAP embedding colored by HDBSCAN labels
-        """
-    
         if self.current_umap_params is None or self.current_hdbscan_params is None:
             raise ValueError("Run umap() and hdbscan() before calling plot().")
 
         emb = self.embeddings[self.current_umap_params]
         labels = self.cluster_labels[self.current_umap_params][self.current_hdbscan_params]
 
-        # Ensure embedding has at least 2 dimensions
         if emb.shape[1] < 2:
             raise ValueError("UMAP embedding must have at least 2 components to plot.")
 
-        # Optionally filter out noise points (-1)
         if not show_noise:
             mask = labels != -1
             emb_plot = emb[mask]
@@ -33,10 +27,17 @@ class PlottingMixin:
         x = emb_plot[:, 0]
         y = emb_plot[:, 1]
 
+        unique_labels = sorted(np.unique(labels_plot))
+        cmap_obj = plt.get_cmap(cmap, len(unique_labels))
+        color_map = {lab: cmap_obj(i) for i, lab in enumerate(unique_labels)}
+
         plt.figure(figsize=figsize)
-        sc = plt.scatter(x, y, c=labels_plot, cmap=cmap, s=s, alpha=alpha)
-        cbar = plt.colorbar(sc)
-        cbar.set_label('Cluster')
+        for lab in unique_labels:
+            mask = labels_plot == lab
+            label_str = 'noise' if lab == -1 else f'cluster {lab}'
+            plt.scatter(x[mask], y[mask], c=[color_map[lab]], s=s, alpha=alpha, label=label_str)
+
+        plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
 
         if title is None:
             title = f"HDBSCAN clusters on UMAP — ID: {self.id}"
