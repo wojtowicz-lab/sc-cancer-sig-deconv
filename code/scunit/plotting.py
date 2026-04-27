@@ -40,7 +40,7 @@ class PlottingMixin:
         plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
 
         if title is None:
-            title = f"HDBSCAN clusters on UMAP — ID: {self.id}"
+            title = f"HDBSCAN clusters on UMAP"
         plt.title(title)
         plt.xlabel("UMAP 1")
         plt.ylabel("UMAP 2")
@@ -52,40 +52,33 @@ class PlottingMixin:
     def plot_exposures(self, signatures, show_noise=False, figsize=(16, 6)):
         """
         Plot boxplots of signature exposures (cellwise deconvolution) by cluster,
-        overlaid with cluster-level deconvolution results as red dots.
-        
-        Parameters:
-        -----------
+        overlaid with cluster-level deconvolution results as black diamonds.
+
+        Parameters
+        ----------
         signatures : pd.DataFrame
-            Signature matrix (index = signature names, columns = mutations/contexts/substitutions)
+            Signature matrix (rows = mutation types, columns = signature names).
         show_noise : bool
-            If True, include cluster -1 (noise points)
+            If True, include cluster -1 (noise points).
         figsize : tuple
-            Figure size
+            Figure size.
         """
         if self.current_hdbscan_params is None:
             raise ValueError("Run umap() and hdbscan() first")
-                
-        # Get deconvolution results
-        cellwise_results = self.deconv(signatures, cellwise=True, noise=show_noise)
-        cluster_results = self.deconv(signatures, cellwise=False, noise=show_noise)
-        
-        # Get labels
-        labels = self.get_labels().values
-        unique_clusters = sorted([c for c in np.unique(labels) if show_noise or c != -1])
-        
-        # Prepare data for boxplot (cellwise exposures)
-        df_plot_list = []
-        for cluster in unique_clusters:
-            if cluster in cellwise_results:
-                cluster_exp = cellwise_results[cluster].copy()
-                cluster_exp['label'] = cluster
-                df_plot_list.append(cluster_exp)
-                
-        df_long = pd.concat(df_plot_list, ignore_index=False)
-        df_long = df_long.melt(id_vars=['label'], var_name='signature', value_name='exposure')
-        
-        # Create plot
+
+        labels = self.get_labels()
+
+        cellwise_results = self.deconv(signatures)
+        cluster_results = self.deconv(signatures, aggregate_by=labels)
+
+        cellwise_results['label'] = labels.values
+        if not show_noise:
+            cellwise_results = cellwise_results[cellwise_results['label'] != -1]
+
+        unique_clusters = sorted(cellwise_results['label'].unique())
+
+        df_long = cellwise_results.melt(id_vars=['label'], var_name='signature', value_name='exposure')
+
         plt.figure(figsize=figsize)
         ax = sns.boxplot(
             data=df_long,
@@ -95,23 +88,19 @@ class PlottingMixin:
             palette='Set2',
             showfliers=False
         )
-        
-        # Overlay cluster-level results as dark gray diamonds, aligned with boxplot centers
-        sig_names = signatures.index.tolist()
+
+        sig_names = signatures.columns.tolist()
         n_clusters = len(unique_clusters)
-        
         for sig_idx, sig_name in enumerate(sig_names):
             for cluster_idx, cluster in enumerate(unique_clusters):
-                if cluster in cluster_results:
-                    cluster_val = cluster_results[cluster].loc[sig_name]
-                    x_pos = sig_idx + (cluster_idx - (n_clusters - 1) / 2) * (0.8 / n_clusters)
-                    ax.plot(x_pos, cluster_val, marker='D', color='black', markersize=4.5, 
+                cluster_val = cluster_results.loc[cluster, sig_name]
+                x_pos = sig_idx + (cluster_idx - (n_clusters - 1) / 2) * (0.8 / n_clusters)
+                ax.plot(x_pos, cluster_val, marker='D', color='black', markersize=4.5,
                         zorder=5, linestyle='none', mec='black', mew=0.5)
-            
+
         plt.xlabel("Signature")
         plt.ylabel("Exposure")
         plt.xticks(rotation=90)
         plt.tight_layout()
         plt.show()
-        
         return self

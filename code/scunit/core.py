@@ -159,79 +159,6 @@ class ScUnit(PlottingMixin):
             print("Could not compute scores (too few clusters).")
 
         return self
-
-    def deconv(self, signatures, cellwise=True, noise=False):
-        """
-        Deconvolve signatures using NNLS for each cluster.
-        
-        Parameters:
-        -----------
-        signatures : pd.DataFrame
-            Signature matrix (index = mutations/contexts/substitutions, columns = signature names)
-        cellwise : bool
-            If True, run NNLS per cell. If False, sum mutations per cluster first.
-        noise : bool
-            If False, exclude cluster -1 (noise points)
-        
-        Returns:
-        --------
-        dict
-            Dictionary with cluster labels as keys and DataFrames/Series as values
-        """
-        if self.current_hdbscan_params is None:
-            raise ValueError("Run umap() and hdbscan() first")
-        
-        labels = self.get_labels().values
-        sig_names = signatures.index
-        n_features = signatures.shape[1]
-        
-        # Match to appropriate df based on number of features
-        if n_features == self.df_mutations.shape[1]:
-            df = self.df_mutations
-        elif n_features == self.df_contexts.shape[1]:
-            df = self.df_contexts
-        elif n_features == self.df_substitutions.shape[1]:
-            df = self.df_substitutions
-        else:
-            raise ValueError(f"Signatures shape {n_features} doesn't match any data type. "
-                            f"Expected {self.df_mutations.shape[1]} or "
-                            f"{self.df_contexts.shape[1]} or {self.df_substitutions.shape[1]}")
-        
-        # Check if columns match (signatures columns must equal df columns)
-        if not df.columns.equals(signatures.columns):
-            raise ValueError(f"Column mismatch: data has {list(df.columns[:5])}... "
-                            f"but signatures has {list(signatures.columns[:5])}...")
-        
-        S = signatures.T
-        results = {}
-        unique_clusters = np.unique(labels)
-        
-        if not noise:
-            unique_clusters = unique_clusters[unique_clusters != -1]
-        
-        for cluster in unique_clusters:
-            mask = labels == cluster
-            M = df.iloc[mask].values
-            cell_ids = df.iloc[mask].index
-            
-            if cellwise:
-                M_norm = M / M.sum(axis=1, keepdims=True)
-                exposures = []
-                for i in range(M_norm.shape[0]):
-                    coeffs, _ = nnls(S, M_norm[i, :])
-                    exposures.append(coeffs)
-                df_result = pd.DataFrame(exposures, columns=sig_names, index=cell_ids)
-                df_result = df_result.div(df_result.sum(axis=1), axis=0)
-            else:
-                v = M.sum(axis=0)
-                v = v / v.sum()
-                coeffs, _ = nnls(S, v)
-                coeffs = coeffs / coeffs.sum()
-                df_result = pd.Series(coeffs, index=sig_names, name=f"cluster_{cluster}")
-            
-            results[cluster] = df_result
-
-        return results
     
     def get_labels(self):
         # Return cluster labels as a Pandas Series
@@ -264,4 +191,73 @@ class ScUnit(PlottingMixin):
         s = pd.Series(labels, name="cluster_label")
 
         return s.value_counts().sort_index()
+    
+    def deconv(self, signatures, aggregate_by=None):
+        """
+        Deconvolve mutational signatures using NNLS for each cell or cluster.
 
+        Parameters
+        ----------
+        signatures : pd.DataFrame
+            Signature matrix (rows = mutation types, columns = signature names).
+        aggregate_by : array-like, optional
+            Cluster labels (e.g., from get_labels()). If provided, mutations are summed
+            per cluster before NNLS, excluding noise points (-1).
+
+        Returns
+        -------
+        pd.DataFrame
+            Exposures per cell or per cluster (rows = cells/clusters, columns = signature names),
+            normalized to sum to 1.
+        """
+        n_features = signatures.shape[0]
+
+        if n_features == self.df_mutations.shape[1]:
+            df = self.df_mutations
+        elif n_features == self.df_contexts.shape[1]:
+            df = self.df_contexts
+        elif n_features == self.df_substitutions.shape[1]:
+            df = self.df_substitutions
+        else:
+            raise ValueError(
+                f"Signatures shape {n_features} doesn't match any data type. "
+                f"Expected {self.df_mutations.shape[1]}, "
+                f"{self.df_contexts.shape[1]}, or {self.df_substitutions.shape[1]}."
+            )
+
+        if not df.columns.equals(signatures.index):
+            raise ValueError(
+                f"Column mismatch: data has {list(df.columns[:5])}... "
+                f"but signatures has {list(signatures.index[:5])}..."
+            )
+
+        if aggregate_by is not None:
+            labels = pd.Series(aggregate_by.values, index=df.index)
+            df = df[labels != -1].groupby(labels[labels != -1]).sum()
+
+        S = signatures.values
+        M = df.values
+        M_norm = M / M.sum(axis=1, keepdims=True)
+
+        exposures = []
+        for i in range(M_norm.shape[0]):
+            coeffs, _ = nnls(S, M_norm[i, :])
+            exposures.append(coeffs)
+
+        result = pd.DataFrame(exposures, index=df.index, columns=signatures.columns)
+        return result.div(result.sum(axis=1), axis=0)
+
+    def passthrough(self, data='mutations'):
+        """
+        Skip dimensionality reduction and use raw data directly for clustering.
+        
+        Parameters
+        ----------
+        data : str
+            Which data to use ('mutations', 'contexts', 'substitutions').
+        """
+        key = self._make_key(method='passthrough', data=data)
+        if key not in self.embeddings:
+            self.embeddings[key] = getattr(self, self._DATASETS[data]).values
+        self.current_umap_params = key
+        return self
