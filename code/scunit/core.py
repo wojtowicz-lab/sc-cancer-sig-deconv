@@ -21,22 +21,16 @@ class ScUnit(PlottingMixin):
         'substitutions': 'df_substitutions',
     }
 
-    def __init__(self, id, filepath=None, min_mutations=0):
+    def __init__(self, path, min_mutations=0):
         """
         Parameters
         ----------
-        id : str
-            Dataset identifier, used to construct the default filepath.
-        filepath : str, optional
-            Path to the CSV file. If None, defaults to '../data/SBS-count-by-cell/{id}.csv'.
+        path : str, optional
+            Path to the CSV file.
         min_mutations : int, optional
             Minimum number of mutations per cell (row sum). Cells below this threshold are excluded. Default is 0 (no filtering).
         """
-        if filepath is None:
-            filepath = f'../data/SBS-count-by-cell/{id}.csv'    # Default filepath based on ID
-        self.id = id
-
-        df = pd.read_csv(filepath).set_index('cell_id')
+        df = pd.read_csv(path).set_index('cell_id')
         if min_mutations > 0:
             df = df[df.sum(axis=1) >= min_mutations]
         self.df_mutations = df
