@@ -3,9 +3,9 @@ import pandas as pd
 
 def crosstable(labels_a, labels_b, normalize=False):
     table = pd.crosstab(labels_a, labels_b,
-                        rownames=['Cluster A'],
-                        colnames=['Cluster B'],
-                        normalize='all' if normalize else False)
+        rownames=['Cluster A'],
+        colnames=['Cluster B'],
+        normalize=normalize)
     return table
 
 def clr(df_exposures, numerical_zero=1e-10):
@@ -58,11 +58,13 @@ def test_signature_exposures(df_exposures, labels, clr_transform=True, numerical
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns 'stat', 'eta_squared', 'p_value', 'p_value_bh'
-        for each signature.
+        DataFrame with columns 'stat', 'eta_squared', 'p_value', 'p_value_bh',
+        and either 'auroc' (k=2) or 'auroc_min' and 'auroc_avg' (k>2).
     """
     from scipy.stats import kruskal
     from statsmodels.stats.multitest import multipletests
+    from sklearn.metrics import roc_auc_score
+    from itertools import combinations
 
     def _eta_squared(groups):
         all_values = np.concatenate(groups)
@@ -71,24 +73,47 @@ def test_signature_exposures(df_exposures, labels, clr_transform=True, numerical
         ss_between = sum(len(g) * (g.mean() - grand_mean) ** 2 for g in groups)
         return ss_between / ss_total if ss_total > 0 else 0.0
 
+    def _auroc(groups_raw, unique_labels):
+        aurocs = []
+        for l1, l2 in combinations(range(len(unique_labels)), 2):
+            g1, g2 = groups_raw[l1], groups_raw[l2]
+            y_true = np.array([0] * len(g1) + [1] * len(g2))
+            y_score = np.concatenate([g1, g2])
+            auroc = roc_auc_score(y_true, y_score)
+            aurocs.append(max(auroc, 1 - auroc))  # ensure AUROC >= 0.5
+        return aurocs
+
     df_raw = df_exposures.copy().reset_index(drop=True)
     df = clr(df_raw, numerical_zero=numerical_zero) if clr_transform else df_raw
-
     mask = labels.values != -1
     df = df.loc[mask].reset_index(drop=True)
     df_raw = df_raw.loc[mask].reset_index(drop=True)
     labels_clean = labels.values[mask]
     unique_labels = np.unique(labels_clean)
+    k = len(unique_labels)
 
     results = {}
     for sig in df.columns:
         groups = [df.loc[labels_clean == label, sig].values for label in unique_labels]
         groups_raw = [df_raw.loc[labels_clean == label, sig].values for label in unique_labels]
         stat, pval = kruskal(*groups)
-        results[sig] = {'stat': stat, 'p_value': pval, 'eta_squared': _eta_squared(groups_raw)}
+        aurocs = _auroc(groups_raw, unique_labels)
+        entry = {
+            'stat': stat,
+            'p_value': pval,
+            'eta_squared': _eta_squared(groups_raw),
+        }
+        if k == 2:
+            entry['auroc'] = aurocs[0]
+        else:
+            entry['auroc_min'] = min(aurocs)
+            entry['auroc_avg'] = np.mean(aurocs)
+        results[sig] = entry
 
     result_df = pd.DataFrame(results).T
     _, pvals_bh, _, _ = multipletests(result_df['p_value'], method='fdr_bh')
     result_df['p_value_bh'] = pvals_bh
 
-    return result_df[['stat', 'eta_squared', 'p_value', 'p_value_bh']]
+    cols = ['stat', 'eta_squared', 'p_value', 'p_value_bh']
+    cols += ['auroc'] if k == 2 else ['auroc_min', 'auroc_avg']
+    return result_df[cols]
