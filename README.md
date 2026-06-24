@@ -7,7 +7,8 @@ Mutational signatures were obtained from the COSMIC database (v3.4), while damag
 - Harrigan, C. F., Campbell, K. R., Morris, Q., & Funnell, T. (2025). *Damage and Misrepair Signatures: Compact Representations of Pan-cancer Mutational Processes.* **bioRxiv**.
 
 Experimental data were obtained from the following publication:
-- Funnell, T., O’Flanagan, C. H., Williams, M. J., McPherson, A., McKinney, S., Kabeer, F., ... & Aparicio, S. (2022). *Single-cell genomic variation induced by mutational processes in cancer.* **Nature**, 612(7938), 106–115.
+- Funnell, T., O’Flanagan, C. H., Williams, M. J., McPherson, A., McKinney, S., Kabeer, F., ... & Aparicio, S. (2022). *Single-cell genomic variation induced by mutational processes in cancer.* **Nature**, 612(7938), 106–115. (https://zenodo.org/records/6998936)
+- Laks, E., McPherson, A., Zahn, H., Lai, D., Steif, A., Brimhall, J., ... & Shah, S. P. (2019). *Clonal decomposition and DNA replication states defined by scaled single-cell genome sequencing.* **Cell**, 179(5), 1207-1221. (https://zenodo.org/records/3445364)
 
 Sequence context was extracted using the human reference genome GRCh37 (RefSeq accession GCF_000001405.13).
 
