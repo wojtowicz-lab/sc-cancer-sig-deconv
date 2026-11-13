@@ -13,3 +13,6 @@ Experimental data were obtained from the following publication:
 
 Sequence context was extracted using the human reference genome GRCh37 (RefSeq accession GCF_000001405.13).
 
+## Funding
+
+The project was financed by the Polish National Agency for Academic Exchange within the Polish Returns Programme (PPN/PPO/2020/1/00028).
